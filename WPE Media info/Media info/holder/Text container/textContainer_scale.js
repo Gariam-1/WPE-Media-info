@@ -81,28 +81,31 @@ export var scriptProperties = createScriptProperties()
 
 const vecToggles = new Vec3(1, 0, 0); //1 enabled, 0 disabled
 const audioBuffer = engine.registerAudioBuffers(16);
-let state, oldState, target, dur = 0, isVector, stopTimeout, pos, oldPos, flip, oldSettings = false, oldTextVisible = true;
+let state, oldState, target, dur = 0, isVector, stopTimeout, pos, oldPos, flip, oldSettings = false, oldTextVisible = true, cursor, oldCursor = false;
 
 export function update(value) {
 	if (oldState == undefined) {
         oldState = state;
-        target = state ? scriptProperties.max : scriptProperties.min;
-        target = oldPos ? target : -target;
+        target = (state && shared.miTextPos != 3) ^ scriptProperties.invert ? scriptProperties.max : scriptProperties.min;
+        target = shared.miTextPos == 1 || shared.miTextPos == 2 && oldPos ? target : -target;
         return target = isVector ? lerp(value, new Vec3(target), vecToggles) : target;
     }
-
+    
     pos = thisLayer.getTransformMatrix().m[12] > engine.canvasSize.x / 2;
-    if (!scriptProperties.media && shared.miTextPos != 3) state = !!audioBuffer.average.reduce((a, b) => a + b) ^ scriptProperties.invert;
+    if (!scriptProperties.media) state = !!audioBuffer.average.reduce((a, b) => a + b) ^ scriptProperties.invert;
+    cursor = shared.miCursorIn ^ scriptProperties.invert;
 
     flip = pos != oldPos;
-    if (oldState != state || flip || oldSettings != shared.miSettingsOpen || shared.miTextVisible != oldTextVisible){
+    const textVisibleChange = shared.miTextVisible != oldTextVisible;
+    const settingsChange = oldSettings != shared.miSettingsOpen;
+    const cursorChange = cursor != oldCursor;
+    
+    if (oldState != state || flip || settingsChange || textVisibleChange || cursorChange){
         if (stopTimeout) stopTimeout();
         oldState = state;
         
         let fadeDur, targ, timer;
-        const settings = shared.miSettingsOpen || !shared.miTextVisible || shared.miTextVisible != oldTextVisible;
-
-        if (state && !shared.miSettingsOpen && shared.miTextVisible || shared.miSettingsOpen && !shared.miTextVisible) {
+        if (state && !shared.miSettingsOpen && shared.miTextVisible && shared.miTextPos != 3 || shared.miSettingsOpen && !shared.miTextVisible || cursor && shared.miTextPos == 3 && !shared.miSettingsOpen && state && shared.miTextVisible) {
             timer = flip ? scriptProperties.timerSwitch : scriptProperties.timerIn;
             fadeDur = scriptProperties.fadeInDur;
             targ = scriptProperties.max;
@@ -111,13 +114,14 @@ export function update(value) {
             fadeDur = scriptProperties.fadeOutDur;
             targ = scriptProperties.min;
         }
-        if (settings) {
-            timer = 0;
-            fadeDur = shared.miSettingsOpenSpeed;
+        if (settingsChange || textVisibleChange || cursorChange) {
+            timer = !cursor ^ scriptProperties.invert && cursorChange ? scriptProperties.timerOut : 0;
+            fadeDur = !cursor ^ scriptProperties.invert && cursorChange ? scriptProperties.fadeOutDur : shared.miSettingsOpenSpeed;
         }
 
         stopTimeout = engine.setTimeout(() => {setTarget(targ, fadeDur)}, timer * 1000);
         
+        oldCursor = cursor;
         oldTextVisible = shared.miTextVisible;
         oldSettings = shared.miSettingsOpen;
         oldPos = pos;
@@ -127,7 +131,7 @@ export function update(value) {
 }
 
 function setTarget(targ, fadeDur) {
-    target = (pos && shared.miTextPos >= 2) || shared.miTextPos ? targ : -targ;
+    target = shared.miTextPos == 1 || (shared.miTextPos >= 2 && pos) ? targ : -targ;
     target = isVector ? new Vec3(target) : target;
 	dur = engine.frametime / Math.max(0.0001, flip ? scriptProperties.switchDur : fadeDur);
     dur = isVector ? vecToggles.multiply(dur) : dur;
@@ -155,13 +159,5 @@ export function init(value) {
 }
 
 export function mediaPlaybackChanged(event) {
-    if (scriptProperties.media && shared.miTextPos != 3) state = event.state == 1 ^ scriptProperties.invert;
-}
-
-export function cursorIn(event) {
-	if (shared.miTextPos == 3) state = true ^ scriptProperties.invert;
-}
-
-export function cursorOut(event) {
-	if (shared.miTextPos == 3) state = false ^ scriptProperties.invert;
+    if (scriptProperties.media) state = event.state == 1 ^ scriptProperties.invert;
 }

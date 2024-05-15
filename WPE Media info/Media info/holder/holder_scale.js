@@ -65,24 +65,25 @@ export var scriptProperties = createScriptProperties()
 
 const vecToggles = new Vec3(1, 1, 1); //1 enabled, 0 disabled
 const audioBuffer = engine.registerAudioBuffers(16);
-let state, oldState, target, dur = 0, isVector, stopTimeout, oldSettings = false;
+let state, oldState, target, dur = 0, isVector, stopTimeout, oldSettings = false, cursor, oldCursor = false;
 
 export function update(value) {
 	if (oldState == undefined) {
 		oldState = state;
-		target = state ? scriptProperties.max : scriptProperties.min;
+		target = (state && shared.miTextPos != 3) ^ scriptProperties.invert ? scriptProperties.max : scriptProperties.min;
 		return target = isVector ? lerp(value, new Vec3(target), vecToggles) : target;
 	}
 
     if (!scriptProperties.media) state = !!audioBuffer.average.reduce((a, b) => a + b) ^ scriptProperties.invert;
+    cursor = shared.miCursorIn ^ scriptProperties.invert;
 
-    if (oldState != state || shared.miSettingsOpen != oldSettings){
+    if (oldState != state || shared.miSettingsOpen != oldSettings || cursor != oldCursor){
         if (stopTimeout) stopTimeout();
         oldState = state;
 
         let fadeDur, targ, timer;
 
-        if (state || shared.miSettingsOpen) {
+        if (state && shared.miTextPos != 3 || shared.miSettingsOpen || cursor && shared.miTextPos == 3 && state) {
             timer = scriptProperties.timerIn;
             fadeDur = scriptProperties.fadeInDur;
             targ = scriptProperties.max;
@@ -98,6 +99,7 @@ export function update(value) {
 
         stopTimeout = engine.setTimeout(() => {setTarget(targ, fadeDur)}, timer * 1000);
 
+        oldCursor = cursor;
         oldSettings = shared.miSettingsOpen;
     }
 
@@ -123,6 +125,7 @@ function lerp(a, b, value) {
 export function init(value) {
 	isVector = value.hasOwnProperty("x");
 	dur = isVector ? new Vec3(dur) : dur;
+    shared.miCursorIn = false;
 
     if (!scriptProperties.media) {
 		state = !!audioBuffer.average.reduce((a, b) => a + b) ^ scriptProperties.invert;
@@ -133,4 +136,12 @@ export function init(value) {
 
 export function mediaPlaybackChanged(event) {
     if (scriptProperties.media) state = event.state == 1 ^ scriptProperties.invert;
+}
+
+export function cursorEnter(event) {
+	shared.miCursorIn = true;
+}
+
+export function cursorLeave(event) {
+	shared.miCursorIn = false;
 }

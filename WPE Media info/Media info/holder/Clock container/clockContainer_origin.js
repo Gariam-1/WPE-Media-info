@@ -86,13 +86,13 @@ export var scriptProperties = createScriptProperties()
 
 const vecToggles = new Vec3(0, 1, 0); //1 enabled, 0 disabled
 const audioBuffer = engine.registerAudioBuffers(16);
-let state, oldState, target, dur = 0, isVector, stopTimeout, pos, oldPos, flip, mediaState = 0, oldSettings = false, oldClockOrientation = 2, parent;
+let state, oldState, target, dur = 0, isVector, stopTimeout, pos, oldPos, flip, mediaState = 0, oldSettings = false, oldClockOrientation = 2, oldShowClock = 2, parent, cursor, oldCursor = false;
 
 export function update(value) {
 	if (oldState == undefined) {
         oldState = state;
-        target = state ? scriptProperties.max : scriptProperties.min;
-        target = oldPos ? target : -target;
+        target = (state && shared.miTextPos != 3 && shared.miShowClock) ^ scriptProperties.invert ? scriptProperties.max : scriptProperties.min;
+        target = shared.miClockPos == 1 || shared.miClockPos == 2 && oldPos ? target : -target;
         return target = isVector ? lerp(value, new Vec3(target), vecToggles) : target;
     }
 
@@ -100,17 +100,20 @@ export function update(value) {
     state = scriptProperties.media ? mediaState : !!audioBuffer.average.reduce((a, b) => a + b);
     state = (!scriptProperties.enabled || state) ^ scriptProperties.invert ^ !scriptProperties.enabled;
     state = (shared.miShowClock == 1 || state) && shared.miShowClock;
+    cursor = shared.miCursorIn ^ scriptProperties.invert;
 
     flip = pos != oldPos;
     const settings = shared.miSettingsOpen != oldSettings;
     const orientation = shared.miClockPos != oldClockOrientation;
-    if (oldState != state || flip || settings || orientation){
+    const toggle = shared.miShowClock != oldShowClock;
+    const cursorChange = cursor != oldCursor;
+
+    if (oldState != state || flip || settings || orientation || toggle || cursorChange){
         if (stopTimeout) stopTimeout();
         oldState = state;
         
         let fadeDur, targ, timer;
-
-        if (state || (shared.miSettingsOpen && shared.miShowClock)) {
+        if ((state && shared.miTextPos != 3 || shared.miSettingsOpen && shared.miShowClock || cursor && shared.miTextPos == 3 && !shared.miSettingsOpen) || shared.miShowClock == 1) {
             timer = flip ? scriptProperties.timerSwitch : scriptProperties.timerIn;
             fadeDur = scriptProperties.fadeInDur;
             targ = scriptProperties.max;
@@ -119,13 +122,15 @@ export function update(value) {
             fadeDur = scriptProperties.fadeOutDur;
             targ = scriptProperties.min;
         }
-        if (settings || orientation) {
-            timer = 0;
-            fadeDur = shared.miSettingsOpenSpeed;
+        if (settings || orientation || toggle || cursorChange) {
+            timer = !cursor ^ scriptProperties.invert && cursorChange ? scriptProperties.timerOut : 0;
+            fadeDur = !cursor ^ scriptProperties.invert && cursorChange ? scriptProperties.fadeOutDur : shared.miSettingsOpenSpeed;
         }
 
         stopTimeout = engine.setTimeout(() => {setTarget(targ, fadeDur)}, timer * 1000);
 		
+        oldCursor = cursor;
+        oldShowClock = shared.miShowClock;
 		oldClockOrientation = shared.miClockPos;
         oldSettings = shared.miSettingsOpen;
         oldPos = pos;
@@ -135,7 +140,7 @@ export function update(value) {
 }
 
 function setTarget(targ, fadeDur) {
-    target = (pos && shared.miClockPos == 2) || !shared.miClockPos ? targ : -targ;
+    target = shared.miClockPos == 1 || shared.miClockPos == 2 && pos ? targ : -targ;
     target = isVector ? new Vec3(target) : target;
 	dur = engine.frametime / Math.max(0.0001, flip ? scriptProperties.switchDur : fadeDur);
     dur = isVector ? vecToggles.multiply(dur) : dur;
